@@ -1,14 +1,22 @@
     EXPORTS
 
 
+    img_capture @1
+
     img_init @2
+
+    img_led @3
+
+    img_read @4
 
     img_readAsy @5
 
-    img_set_exp @6
+    img_reset @6
 
-    img_set_gain @7
+    img_set_exp @7
 
-    img_set_lt @11
+    img_set_gain @8
 
-    img_set_wh @12
+    img_set_lt @9
+
+    img_set_wh @10

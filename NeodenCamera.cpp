@@ -128,6 +128,24 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     return 0;
 }
 
+BOOL _cdecl img_capture(int which_camera)
+{
+    _RPT0(_CRT_WARN, "IMG CAPTURE\n");
+    return 0;
+}
+
+int _cdecl img_reset(int which_camera)
+{
+    _RPT0(_CRT_WARN, "IMG RESET\n");
+    return 0;
+}
+
+BOOL _cdecl img_led(int which_camera, short mode)
+{
+    _RPT0(_CRT_WARN, "IMG LED\n");
+    return 0;
+}
+
 int _cdecl img_init()
 {
     _RPT0(_CRT_WARN, "IMG INIT\n");
@@ -177,10 +195,15 @@ int _cdecl img_init()
     return n;
 }
 
-
-int _cdecl img_readAsy ( int which_camera, unsigned char * pFrameBuffer, int a3, DWORD dwMilliseconds, char a5 )
+int _cdecl img_read(int which_camera, unsigned char* pFrameBuffer, int BytesToRead, int ms)
 {
-    _RPT1(_CRT_WARN, "IMG CAPTURE: %d %d %d\n", which_camera, a3, a5);
+    _RPT1(_CRT_WARN, "IMG READ: %d %d %d\n", which_camera, BytesToRead, ms);
+    return 0;
+}
+
+int _cdecl img_readAsy(int which_camera, unsigned char* pFrameBuffer, int BytesToRead, int ms)
+{
+    _RPT1(_CRT_WARN, "IMG READASY: %d %d %d\n", which_camera, BytesToRead, ms);
 
     LONG bytesToSend = 0;
     LONG rLen = 0;
@@ -210,9 +233,8 @@ int _cdecl img_readAsy ( int which_camera, unsigned char * pFrameBuffer, int a3,
     epControl->Write(buf2, bytesToSend);
 
     // ************************************************
-    bytesToSend = a3;
-    rLen = bytesToSend;
-    epBulkIn->TimeOut = 1000;
+    rLen = BytesToRead;
+    epBulkIn->TimeOut = ms;
     bXferCompleted = epBulkIn->XferData(pFrameBuffer, rLen);
     if (bXferCompleted)
     {
