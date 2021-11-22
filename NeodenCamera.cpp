@@ -137,6 +137,31 @@ BOOL _cdecl img_capture(int which_camera)
 int _cdecl img_reset(int which_camera)
 {
     _RPT0(_CRT_WARN, "IMG RESET\n");
+
+    LONG bytesToSend = 6;
+    unsigned char  buf2[6] = { 0xB3, 0x00, 0x00, 0x00, 0x06, 0x00 };
+
+    switchCamera(which_camera);
+
+    epControl->Target = TGT_DEVICE; // byte 0
+    epControl->ReqType = REQ_VENDOR; // byte 0
+    epControl->Direction = DIR_TO_DEVICE;
+    epControl->ReqCode = 0xb3; // byte 1
+    epControl->Value = 0x0000; // byte 2,3
+    epControl->Index = 0x0000; // byte 4,5
+    epControl->Write(buf2, bytesToSend);
+    
+    bytesToSend = 0;
+    epControl->Target = TGT_ENDPT; // byte 0
+    epControl->ReqType = REQ_STD; // byte 0
+    epControl->Direction = DIR_TO_DEVICE;
+    epControl->ReqCode = 0x01; // byte 1
+    epControl->Value = 0x0000; // byte 2,3
+    epControl->Index = 0x0082; // byte 4,5
+    epControl->Write(buf2, bytesToSend);
+
+    // ************************************************
+
     return 0;
 }
 
@@ -205,9 +230,9 @@ int _cdecl img_readAsy(int which_camera, unsigned char* pFrameBuffer, int BytesT
 {
     _RPT1(_CRT_WARN, "IMG READASY: %d %d %d\n", which_camera, BytesToRead, ms);
 
-    LONG bytesToSend = 0;
+    LONG bytesToSend = 6;
     LONG rLen = 0;
-    unsigned char  buf2[1];
+    unsigned char  buf2[6] = { 0xB3, 0x00, 0x00, 0x00, 0x00, 0x00 };
     BOOL bXferCompleted = false;
     int retVal = 0;
 
@@ -217,7 +242,7 @@ int _cdecl img_readAsy(int which_camera, unsigned char* pFrameBuffer, int BytesT
         return 0;
     }
 
-    epControl->Target = TGT_OTHER; // byte 0
+    epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
     epControl->Direction = DIR_TO_DEVICE;
     epControl->ReqCode = 0xb3; // byte 1
@@ -225,7 +250,9 @@ int _cdecl img_readAsy(int which_camera, unsigned char* pFrameBuffer, int BytesT
     epControl->Index = 0x0000; // byte 4,5
     epControl->Write(buf2, bytesToSend);
 
-    epControl->Target = TGT_INTFC; // byte 0
+    buf2[0] = 0xB1;
+
+    epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
     epControl->ReqCode = 0xb1; // byte 1
     epControl->Value = 0x0000; // byte 2,3
@@ -248,17 +275,20 @@ int _cdecl img_readAsy(int which_camera, unsigned char* pFrameBuffer, int BytesT
 BOOL _cdecl img_set_exp(int which_camera, int16_t exposure)
 {
     _RPT1(_CRT_WARN, "IMG SET EXP: %d\n", which_camera);
-    unsigned char  buf2[1];
-    LONG bytesToSend = 0;  // 38 + 0 = 38
+    unsigned char  buf2[6] = { 0xB4, 0x00, 0x00, 0x00, 0x06, 0x00 };
+    LONG bytesToSend = 6;  // 38 + 0 = 38
 
     switchCamera(which_camera);
 
-    epControl->Target = TGT_ENDPT; // byte 0
+    epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
     epControl->ReqCode = 0xb4; // byte 1
     epControl->Direction = DIR_TO_DEVICE; // 0x40
     epControl->Value = exposure; // byte 2,3
     epControl->Index = 0x0000; // byte 4,5
+
+    buf2[1] = epControl->Value & 0x00FF;
+    buf2[2] = (epControl->Value & 0xFF00) >> 8;
 
     return epControl->Write(buf2, bytesToSend);
 }
@@ -266,17 +296,20 @@ BOOL _cdecl img_set_exp(int which_camera, int16_t exposure)
 BOOL _cdecl img_set_gain(int which_camera, int16_t gain)
 {
     _RPT1(_CRT_WARN, "IMG SET GAIN: %d\n", which_camera);
-    unsigned char  buf2[1];
-    LONG bytesToSend = 0;  // 38 + 0 = 38
+    unsigned char  buf2[6] = { 0xB5, 0x00, 0x00, 0x00, 0x06, 0x00 };
+    LONG bytesToSend = 6;  // 38 + 0 = 38
 
     switchCamera(which_camera);
 
-    epControl->Target = TGT_ENDPT; // byte 0
+    epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
     epControl->ReqCode = 0xb5; // byte 1
     epControl->Direction = DIR_TO_DEVICE; // 0x40
     epControl->Value = gain; // byte 2,3
     epControl->Index = 0x0000; // byte 4,5
+
+    buf2[1] = epControl->Value & 0x00FF;
+    buf2[2] = (epControl->Value & 0xFF00) >> 8;
 
     return epControl->Write(buf2, bytesToSend);
 }
@@ -284,12 +317,12 @@ BOOL _cdecl img_set_gain(int which_camera, int16_t gain)
 BOOL _cdecl img_set_lt(int which_camera, int16_t a2, int16_t a3)
 {
     _RPT1(_CRT_WARN, "IMG SET LT: %d\n", which_camera);
-    unsigned char  buf2[1];
-    LONG bytesToSend = 0;  // 38 + 0 = 38
+    unsigned char  buf2[6] = { 0xB6, 0x00, 0x00, 0x00, 0x06, 0x00 };
+    LONG bytesToSend = 6;  // 38 + 0 = 38
 
     switchCamera(which_camera);
 
-    epControl->Target = TGT_ENDPT; // byte 0
+    epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
     epControl->ReqCode = 0xb6; // byte 1
     epControl->Direction = DIR_TO_DEVICE; // 0x40
@@ -297,14 +330,21 @@ BOOL _cdecl img_set_lt(int which_camera, int16_t a2, int16_t a3)
     // ************************************************
     epControl->Value = ((a2 >> 1) << 1) + 12; // byte 2,3
     epControl->Index = 0x0000; // byte 4,5
+
+    buf2[1] = epControl->Value & 0x00FF;
+    buf2[2] = (epControl->Value & 0xFF00) >> 8;
+
+    buf2[3] = epControl->Index & 0x00FF;
+    buf2[4] = (epControl->Index & 0xFF00) >> 8;
+
     return epControl->Write(buf2, bytesToSend);
 }
 
 BOOL _cdecl img_set_wh(int which_camera, int16_t w, int16_t h)
 {
     _RPT1(_CRT_WARN, "IMG SET WH: %d\n", which_camera);
-    unsigned char  buf2[1];
-    LONG bytesToSend = 0;  // 38 + 0 = 38
+    unsigned char  buf2[6] = { 0xB7, 0x00, 0x00, 0x00, 0x06, 0x00 };
+    LONG bytesToSend = 6;  // 38 + 0 = 38
 
     switchCamera(which_camera);
 
@@ -316,5 +356,12 @@ BOOL _cdecl img_set_wh(int which_camera, int16_t w, int16_t h)
     // ************************************************
     epControl->Value = h; // byte 2,3
     epControl->Index = w; // byte 4,5
+
+    buf2[1] = epControl->Value & 0x00FF;
+    buf2[2] = (epControl->Value & 0xFF00) >> 8;
+
+    buf2[3] = epControl->Index & 0x00FF;
+    buf2[4] = (epControl->Index & 0xFF00) >> 8;
+
     return epControl->Write(buf2, bytesToSend);
 }
