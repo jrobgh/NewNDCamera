@@ -265,6 +265,31 @@ int _cdecl img_readAsy(int which_camera, unsigned char* pFrameBuffer, int BytesT
     rLen = BytesToRead;
     
     bXferCompleted = epBulkIn->XferData(pFrameBuffer, rLen);
+
+    // Read 0 bytes, try again?
+    if (rLen == 0)
+    {
+        epControl->Target = TGT_DEVICE; // byte 0
+        epControl->ReqType = REQ_VENDOR; // byte 0
+        epControl->Direction = DIR_TO_DEVICE;
+        epControl->ReqCode = 0xb3; // byte 1
+        epControl->Value = 0x0000; // byte 2,3
+        epControl->Index = 0x0000; // byte 4,5
+        epControl->Write(buf2, bytesToSend);
+
+        buf2[0] = 0xB1;
+
+        epControl->Target = TGT_DEVICE; // byte 0
+        epControl->ReqType = REQ_VENDOR; // byte 0
+        epControl->ReqCode = 0xb1; // byte 1
+        epControl->Value = 0x0000; // byte 2,3
+        epControl->Index = 0x0000; // byte 4,5
+        epControl->Write(buf2, bytesToSend);
+
+        rLen = BytesToRead;
+        bXferCompleted = epBulkIn->XferData(pFrameBuffer, rLen);
+    }
+
     if (bXferCompleted)
         retVal = 1;
     else
