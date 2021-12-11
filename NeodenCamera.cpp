@@ -12,81 +12,50 @@
 
 using namespace std;
 
-CCyUSBDevice* USBDevice;
-HANDLE hDevice;
-CCyControlEndPoint* epControl;
-CCyBulkEndPoint* epBulkIn;
+CCyUSBDevice* USBDevice1;
+CCyUSBDevice* USBDevice5;
 
-int					QueueSize = 16;
-const int			MAX_QUEUE_SZ = 64;
-//static int			PPX = 8192;
 static int			PPX = 1;
-static int			TimeOut = 1500;
 
-int open_camera = 0;
-
-void openCameraID(int id)
-{
-    int n = USBDevice->DeviceCount();
-
-    for (int i = 0; i < n; i++)
-    {
-        if (USBDevice->IsOpen() == true)
-        {
-            USBDevice->Close();
-            open_camera = 0;
-        }
-        USBDevice->Open(i);
-        // Is it the Neoden?
-        if (USBDevice->VendorID != 0x52cb)
-        {
-            continue;
-        }
-
-        switch (USBDevice->Product[0])
-        {
-            case 'H':
-            if (id == 1)
-            {
-                _RPT1(_CRT_WARN, "WE FOUND CAMERA ID:%d\n", id);
-                open_camera = 1;
-                return;
-            }
-            break;
-            case 'B':
-            if (id == 5)
-            {
-                _RPT1(_CRT_WARN, "WE FOUND CAMERA ID:%d\n", id);
-                open_camera = 5;
-                return;
-            }
-            break;
-        }
-
-    }
-}
-
-void switchCamera(int camera_id)
+CCyBulkEndPoint* getBulkEp(int camera_id)
 {
     if (camera_id != 1)
         if (camera_id != 5)
         {
-            _RPT1(_CRT_WARN, "switchCamera(%d) is not 1 or 5\n", camera_id);
-            return;
+            _RPT1(_CRT_WARN, "getControlEp(%d) is not 1 or 5\n", camera_id);
         }
-
-    if (open_camera != camera_id)
+    
+    if (camera_id == 1)
     {
-        // we need to open the right device
-        openCameraID(camera_id);
+        USBDevice1->BulkInEndPt->SetXferSize(1024);
+        return USBDevice1->BulkInEndPt;
     }
-    else
-        return;
-
-    epControl = USBDevice->ControlEndPt;
-    epBulkIn = USBDevice->BulkInEndPt;
+    if (camera_id == 5)
+    {
+        USBDevice5->BulkInEndPt->SetXferSize(1024);
+        return USBDevice5->BulkInEndPt;
+    }
+    return NULL;
 }
 
+
+CCyControlEndPoint* getControlEp(int camera_id)
+{
+    if (camera_id != 1)
+        if (camera_id != 5)
+        {
+            _RPT1(_CRT_WARN, "getControlEp(%d) is not 1 or 5\n", camera_id);
+        }
+
+    if (camera_id == 1)
+        return USBDevice1->ControlEndPt;
+    if (camera_id == 5)
+        return USBDevice5->ControlEndPt;
+    return NULL;
+}
+
+HANDLE hnd1;
+HANDLE hnd5;
 
 
 BOOL APIENTRY DllMain(HMODULE hModule,
@@ -98,8 +67,9 @@ BOOL APIENTRY DllMain(HMODULE hModule,
     {
     case DLL_PROCESS_ATTACH:
     {
-        // Create the CyUSBDevice
-        USBDevice = new CCyUSBDevice(0, CYUSBDRV_GUID, true);
+        // Create the CyUSBDevices
+        USBDevice1 = new CCyUSBDevice(hnd1, CYUSBDRV_GUID, true);
+        USBDevice5 = new CCyUSBDevice(hnd5, CYUSBDRV_GUID, true);
     }
     break;
     case DLL_THREAD_ATTACH:
@@ -117,14 +87,16 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     LPTSTR    lpCmdLine,
     int       nCmdShow)
 {
-    // Create the CyUSBDevice
-    USBDevice = new CCyUSBDevice(0, CYUSBDRV_GUID, true);
+    // Create the CyUSBDevices
+    USBDevice1 = new CCyUSBDevice(hnd1, CYUSBDRV_GUID, true);
+    USBDevice5 = new CCyUSBDevice(hnd5, CYUSBDRV_GUID, true);
 
     if (img_init() == 2)
     {
     }
 
-    delete USBDevice;
+    delete USBDevice1;
+    delete USBDevice5;
     return 0;
 }
 
@@ -138,10 +110,14 @@ int _cdecl img_reset(int which_camera)
 {
     _RPT0(_CRT_WARN, "IMG RESET\n");
 
+    return 0;
+/*
     LONG bytesToSend = 6;
-    unsigned char  buf2[6] = { 0xB3, 0x00, 0x00, 0x00, 0x06, 0x00 };
+    unsigned char  buf2[6] = { 0xB3, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-    switchCamera(which_camera);
+    CCyControlEndPoint* epControl = getControlEp(which_camera);
+    if (epControl == NULL)
+        return -1;
 
     epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
@@ -163,6 +139,7 @@ int _cdecl img_reset(int which_camera)
     // ************************************************
 
     return 0;
+    */
 }
 
 BOOL _cdecl img_led(int which_camera, short mode)
@@ -176,45 +153,62 @@ int _cdecl img_init()
     _RPT0(_CRT_WARN, "IMG INIT\n");
 
     BOOL bXferCompleted = false;
-    int n = USBDevice->DeviceCount();
+    int n = USBDevice1->DeviceCount();
     long len = 0; // Each xfer request will get PPX isoc packets
 
     LONG bytesToSend = 0;
     LONG rLen = 0;
 
+    // Find the two camera index
+    int index1 = -1;
+    int index5 = -1;
     for (int i = 0; i < n; i++)
     {
-        if (USBDevice->IsOpen() == true)
+        if (USBDevice1->IsOpen() == true)
         {
-            USBDevice->Close();
-            open_camera = 0;
+            USBDevice1->Close();
         }
-        USBDevice->Open(i);
+        USBDevice1->Open(i);
         // Is it the Neoden?
-        if (USBDevice->VendorID != 0x52cb)
+        if (USBDevice1->VendorID != 0x52cb)
         {
             continue;
         }
 
-        switch (USBDevice->Product[0])
+        switch (USBDevice1->Product[0])
         {
-        case 'H':
-            _RPT0(_CRT_WARN, "WE FOUND CAMERA DOWN\n");
-            open_camera = 1;         
-            break;
-        case 'B':
-            _RPT0(_CRT_WARN, "WE FOUND CAMERA UP\n");
-            open_camera = 5;
-            break;
+            case 'H': //1 
+                _RPT0(_CRT_WARN, "WE FOUND CAMERA DOWN\n");
+                index1 = i;
+                break;
+            case 'B': //5
+                _RPT0(_CRT_WARN, "WE FOUND CAMERA UP\n");
+                index5 = i;
+                break;
         }
+    }
 
-        hDevice = USBDevice->DeviceHandle();
-        epControl = USBDevice->ControlEndPt;
-        _RPT1(_CRT_WARN, "epcontrol init: 0x%x\n", epControl);
-        epBulkIn = USBDevice->BulkInEndPt;
+    n = 0;
+    if (index5 != -1)
+    {
+        if (USBDevice5->IsOpen() == true)
+        {
+            USBDevice5->Close();
+        }
+        USBDevice5->Open(index5);
+        len = USBDevice5->ControlEndPt->MaxPktSize * PPX;
+        USBDevice5->ControlEndPt->SetXferSize(len);
+        n++;
+    }
 
-        len = epControl->MaxPktSize * PPX;
-        epControl->SetXferSize(len);
+    if (index1 != -1)
+    {
+        if (USBDevice1->IsOpen() == true)
+            USBDevice1->Close();
+        USBDevice1->Open(index1);
+        len = USBDevice1->ControlEndPt->MaxPktSize * PPX;
+        USBDevice1->ControlEndPt->SetXferSize(len);
+        n++;
     }
 
     return n;
@@ -236,11 +230,19 @@ int _cdecl img_readAsy(int which_camera, unsigned char* pFrameBuffer, int BytesT
     BOOL bXferCompleted = false;
     int retVal = 0;
 
-    switchCamera(which_camera);
+    CCyControlEndPoint* epControl = getControlEp(which_camera);
+    if (epControl == NULL)
+        return -1;
 
     if ( pFrameBuffer == NULL ) {
         return 0;
     }
+
+    CCyBulkEndPoint* epBulkIn = getBulkEp(which_camera);
+    if (epBulkIn == NULL)
+        return -1;
+
+    epBulkIn->TimeOut = ms;
 
     epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
@@ -261,12 +263,12 @@ int _cdecl img_readAsy(int which_camera, unsigned char* pFrameBuffer, int BytesT
 
     // ************************************************
     rLen = BytesToRead;
-    epBulkIn->TimeOut = ms;
+    
     bXferCompleted = epBulkIn->XferData(pFrameBuffer, rLen);
     if (bXferCompleted)
-    {
         retVal = 1;
-    }
+    else
+        retVal = 0;
 
     return retVal;
 
@@ -275,10 +277,12 @@ int _cdecl img_readAsy(int which_camera, unsigned char* pFrameBuffer, int BytesT
 BOOL _cdecl img_set_exp(int which_camera, int16_t exposure)
 {
     _RPT1(_CRT_WARN, "IMG SET EXP: %d\n", which_camera);
-    unsigned char  buf2[6] = { 0xB4, 0x00, 0x00, 0x00, 0x06, 0x00 };
+    unsigned char  buf2[6] = { 0xB4, 0x00, 0x00, 0x00, 0x00, 0x00 };
     LONG bytesToSend = 6;  // 38 + 0 = 38
 
-    switchCamera(which_camera);
+    CCyControlEndPoint* epControl = getControlEp(which_camera);
+    if (epControl == NULL)
+        return -1;
 
     epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
@@ -287,8 +291,8 @@ BOOL _cdecl img_set_exp(int which_camera, int16_t exposure)
     epControl->Value = exposure; // byte 2,3
     epControl->Index = 0x0000; // byte 4,5
 
-    buf2[1] = epControl->Value & 0x00FF;
-    buf2[2] = (epControl->Value & 0xFF00) >> 8;
+    buf2[2] = epControl->Value & 0x00FF;
+    buf2[3] = (epControl->Value & 0xFF00) >> 8;
 
     return epControl->Write(buf2, bytesToSend);
 }
@@ -296,10 +300,12 @@ BOOL _cdecl img_set_exp(int which_camera, int16_t exposure)
 BOOL _cdecl img_set_gain(int which_camera, int16_t gain)
 {
     _RPT1(_CRT_WARN, "IMG SET GAIN: %d\n", which_camera);
-    unsigned char  buf2[6] = { 0xB5, 0x00, 0x00, 0x00, 0x06, 0x00 };
+    unsigned char  buf2[6] = { 0xB5, 0x00, 0x00, 0x00, 0x00, 0x00 };
     LONG bytesToSend = 6;  // 38 + 0 = 38
 
-    switchCamera(which_camera);
+    CCyControlEndPoint* epControl = getControlEp(which_camera);
+    if (epControl == 0)
+        return -1;
 
     epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
@@ -308,8 +314,8 @@ BOOL _cdecl img_set_gain(int which_camera, int16_t gain)
     epControl->Value = gain; // byte 2,3
     epControl->Index = 0x0000; // byte 4,5
 
-    buf2[1] = epControl->Value & 0x00FF;
-    buf2[2] = (epControl->Value & 0xFF00) >> 8;
+    buf2[2] = epControl->Value & 0x00FF;
+    buf2[3] = (epControl->Value & 0xFF00) >> 8;
 
     return epControl->Write(buf2, bytesToSend);
 }
@@ -317,10 +323,12 @@ BOOL _cdecl img_set_gain(int which_camera, int16_t gain)
 BOOL _cdecl img_set_lt(int which_camera, int16_t a2, int16_t a3)
 {
     _RPT1(_CRT_WARN, "IMG SET LT: %d\n", which_camera);
-    unsigned char  buf2[6] = { 0xB6, 0x00, 0x00, 0x00, 0x06, 0x00 };
+    unsigned char  buf2[6] = { 0xB6, 0x00, 0x00, 0x00, 0x00, 0x00 };
     LONG bytesToSend = 6;  // 38 + 0 = 38
 
-    switchCamera(which_camera);
+    CCyControlEndPoint* epControl = getControlEp(which_camera);
+    if (epControl == NULL)
+        return -1;
 
     epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
@@ -331,11 +339,11 @@ BOOL _cdecl img_set_lt(int which_camera, int16_t a2, int16_t a3)
     epControl->Value = ((a2 >> 1) << 1) + 12; // byte 2,3
     epControl->Index = 0x0000; // byte 4,5
 
-    buf2[1] = epControl->Value & 0x00FF;
-    buf2[2] = (epControl->Value & 0xFF00) >> 8;
+    buf2[2] = epControl->Value & 0x00FF;
+    buf2[3] = (epControl->Value & 0xFF00) >> 8;
 
-    buf2[3] = epControl->Index & 0x00FF;
-    buf2[4] = (epControl->Index & 0xFF00) >> 8;
+    buf2[4] = epControl->Index & 0x00FF;
+    buf2[5] = (epControl->Index & 0xFF00) >> 8;
 
     return epControl->Write(buf2, bytesToSend);
 }
@@ -343,10 +351,12 @@ BOOL _cdecl img_set_lt(int which_camera, int16_t a2, int16_t a3)
 BOOL _cdecl img_set_wh(int which_camera, int16_t w, int16_t h)
 {
     _RPT1(_CRT_WARN, "IMG SET WH: %d\n", which_camera);
-    unsigned char  buf2[6] = { 0xB7, 0x00, 0x00, 0x00, 0x06, 0x00 };
+    unsigned char  buf2[6] = { 0xB7, 0x00, 0x00, 0x00, 0x00, 0x00 };
     LONG bytesToSend = 6;  // 38 + 0 = 38
 
-    switchCamera(which_camera);
+    CCyControlEndPoint* epControl = getControlEp(which_camera);
+    if (epControl == NULL)
+        return -1;
 
     epControl->Target = TGT_DEVICE; // byte 0
     epControl->ReqType = REQ_VENDOR; // byte 0
@@ -357,11 +367,11 @@ BOOL _cdecl img_set_wh(int which_camera, int16_t w, int16_t h)
     epControl->Value = h; // byte 2,3
     epControl->Index = w; // byte 4,5
 
-    buf2[1] = epControl->Value & 0x00FF;
-    buf2[2] = (epControl->Value & 0xFF00) >> 8;
+    buf2[2] = epControl->Value & 0x00FF;
+    buf2[3] = (epControl->Value & 0xFF00) >> 8;
 
-    buf2[3] = epControl->Index & 0x00FF;
-    buf2[4] = (epControl->Index & 0xFF00) >> 8;
+    buf2[4] = epControl->Index & 0x00FF;
+    buf2[5] = (epControl->Index & 0xFF00) >> 8;
 
     return epControl->Write(buf2, bytesToSend);
 }
